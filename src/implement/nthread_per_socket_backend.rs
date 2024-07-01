@@ -430,6 +430,7 @@ impl Net for BaguaNet {
         let mut parallel_streams = Vec::new();
         let mut ctrl_stream = None;
         let mut streams_input = std::collections::BTreeMap::new();
+        println!("Accept {}", self.nstreams);
         for _ in 0..=self.nstreams {
             let (mut stream, _addr) = match listen_comm.tcp_listener.lock().unwrap().accept() {
                 Ok(listen) => listen,

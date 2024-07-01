@@ -7,7 +7,7 @@ int32_t BaguaNet::devices(int32_t *ndev)
 
 int32_t BaguaNet::get_properties(int32_t dev_id, NCCLNetPropertiesC *props)
 {
-    // HINT: The name and pci_path of ncclNetProperties_v4_t are both
+    // HINT: The name and pci_path of ncclNetProperties_v5_t are both
     // references and cannot be passed in directly
     auto &inner_props = device_props.at(dev_id);
     if (!inner_props)

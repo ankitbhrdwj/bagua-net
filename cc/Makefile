@@ -1,16 +1,16 @@
-INC:= -I. -I./v4 -I./v3
+INC:= -I. -I./v5 -I./v3
 PLUGIN_SO:=libnccl-net.so
 BAGUA_NET_LIB:=libbagua_net.a
-NCCL_NET_V4:=./v4/nccl_net_v4.cc
+NCCL_NET_V5:=./v5/nccl_net_v5.cc
 NCCL_NET_V3:=./v3/nccl_net_v3.cc
 
 default: $(PLUGIN_SO) $(BAGUA_NET_LIB)
 
-$(PLUGIN_SO): bagua_net.cc $(NCCL_NET_V4) $(NCCL_NET_V3) $(BAGUA_NET_LIB)
+$(PLUGIN_SO): bagua_net.cc $(NCCL_NET_V5) $(NCCL_NET_V3) $(BAGUA_NET_LIB)
 	$(CXX) -v $(INC) \
 	-std=c++17 -fPIC -shared \
 	-o $@ $^ \
-	-L. -l:$(BAGUA_NET_LIB) -lz
+	-L. -l:$(BAGUA_NET_LIB) -lz -lcurl
 
 $(BAGUA_NET_LIB):
 	cargo build --release && cp ../target/release/$(BAGUA_NET_LIB) ./$(BAGUA_NET_LIB)

@@ -19,7 +19,7 @@ typedef struct
   int speed;      // Port speed in Mbps.
   int port;       // Port number.
   int maxComms;   // Maximum number of comms we can create
-} ncclNetProperties_v4_t;
+} ncclNetProperties_v5_t;
 
 typedef struct
 {
@@ -30,7 +30,7 @@ typedef struct
   // Return the number of adapters.
   ncclResult_t (*devices)(int *ndev);
   // Get various device properties.
-  ncclResult_t (*getProperties)(int dev, ncclNetProperties_v4_t *props);
+  ncclResult_t (*getProperties)(int dev, ncclNetProperties_v5_t *props);
   // Create a receiving object and provide a handle to connect to it. The
   // handle can be up to NCCL_NET_HANDLE_MAXSIZE bytes and will be exchanged
   // between ranks to create a connection.
@@ -59,7 +59,7 @@ typedef struct
   ncclResult_t (*closeSend)(void *sendComm);
   ncclResult_t (*closeRecv)(void *recvComm);
   ncclResult_t (*closeListen)(void *listenComm);
-} ncclNet_v4_t;
+} ncclNet_v5_t;
 
 typedef struct
 {
@@ -71,7 +71,7 @@ typedef struct
   // If ndev returns 0, all other functions might be set to NULL.
   ncclResult_t (*devices)(int *ndev);
   // Get various device properties.
-  ncclResult_t (*getProperties)(int dev, ncclNetProperties_v4_t *props);
+  ncclResult_t (*getProperties)(int dev, ncclNetProperties_v5_t *props);
   // Create a receiving object and provide a handle to connect to it. The
   // handle can be up to NCCL_NET_HANDLE_MAXSIZE bytes and will be exchanged
   // between ranks to create connections.
@@ -98,4 +98,4 @@ typedef struct
   // Close and free collective comm objects
   ncclResult_t (*closeColl)(void *collComm);
   ncclResult_t (*closeListen)(void *listenComm);
-} ncclCollNet_v4_t;
+} ncclCollNet_v5_t;
