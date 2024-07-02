@@ -114,7 +114,7 @@ __hidden ncclResult_t baguaNetDeregMr_v5(void *comm, void *mhandle)
     return ncclSuccess;
 }
 
-__hidden ncclResult_t baguaNetIsend_v5(void *sendComm, void *data, int size, void *mhandle, void **request)
+__hidden ncclResult_t baguaNetIsend_v5(void *sendComm, void *data, int size, int tag, void *mhandle, void **request)
 {
     int ret = BaguaNet::instance().isend(sendComm, data, size, mhandle, request);
     if (ret != 0)
@@ -128,9 +128,9 @@ __hidden ncclResult_t baguaNetIsend_v5(void *sendComm, void *data, int size, voi
     return ncclSuccess;
 }
 
-__hidden ncclResult_t baguaNetIrecv_v5(void *recvComm, void *data, int size, void *mhandle, void **request)
+__hidden ncclResult_t baguaNetIrecv_v5(void *recvComm, int n, void **data, int *size, int *tags, void **mhandle, void **request)
 {
-    int ret = BaguaNet::instance().irecv(recvComm, data, size, mhandle, request);
+    int ret = BaguaNet::instance().irecv(recvComm, *data, *size, *mhandle, request);
     if (ret != 0)
     {
         NCCL_WARN("baguaNetIrecv_v5 failed, ret=%d, sendComm=%p, data=%p, size=%d", ret, recvComm, data, size);
@@ -142,7 +142,7 @@ __hidden ncclResult_t baguaNetIrecv_v5(void *recvComm, void *data, int size, voi
     return ncclSuccess;
 }
 
-__hidden ncclResult_t baguaNetFlush_v5(void *recvComm, void *data, int size, void *mhandle, void **request)
+__hidden ncclResult_t baguaNetFlush_v5(void *recvComm, int n, void **data, int *sizes, void **mhandle, void **request)
 {
     // We don't support CUDA pointers, so we don't need a flush operation
     return ncclInternalError;
