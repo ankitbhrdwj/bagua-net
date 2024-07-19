@@ -1,3 +1,5 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -8,7 +10,6 @@ mod utils;
 use ffi_convert::{AsRust, CDrop, CReprOf};
 use implement::{nthread_per_socket_backend, tokio_backend};
 use interface::{NCCLNetProperties, Net, SocketHandle};
-use libc;
 use std::sync::{Arc, Mutex};
 
 pub struct BaguaNetC {
@@ -72,7 +73,7 @@ pub extern "C" fn bagua_net_c_devices(ptr: *mut BaguaNetC, ndev: *mut i32) -> i3
     unsafe {
         *ndev = (*ptr).inner.lock().unwrap().devices().unwrap() as i32;
     }
-    return 0;
+    0
 }
 
 #[repr(C)]
@@ -115,7 +116,7 @@ pub extern "C" fn bagua_net_c_get_properties(
             .unwrap();
         *props = NCCLNetPropertiesC::c_repr_of(props_raw).unwrap();
     }
-    return 0;
+    0
 }
 
 #[repr(C)]
@@ -156,9 +157,9 @@ pub extern "C" fn bagua_net_c_listen(
         };
         let (sockaddr, _) = handle.addr.as_ffi_pair();
         (*socket_handle).sockaddr = *sockaddr;
-        *socket_listen_comm_id = id as usize;
+        *socket_listen_comm_id = id;
     }
-    return 0;
+    0
 }
 
 /// Error code
@@ -201,7 +202,7 @@ pub extern "C" fn bagua_net_c_connect(
             Err(_err) => return -3,
         }
     }
-    return 0;
+    0
 }
 
 /// Error code
@@ -222,7 +223,7 @@ pub extern "C" fn bagua_net_c_accept(
     unsafe {
         *recv_comm_id = (*ptr).inner.lock().unwrap().accept(listen_comm_id).unwrap();
     }
-    return 0;
+    0
 }
 
 #[repr(C)]
@@ -256,7 +257,7 @@ pub extern "C" fn bagua_net_c_isend(
             .isend(send_comm_id, data)
             .unwrap();
     }
-    return 0;
+    0
 }
 
 /// Error code
@@ -284,7 +285,7 @@ pub extern "C" fn bagua_net_c_irecv(
             .irecv(recv_comm_id, data)
             .unwrap();
     }
-    return 0;
+    0
 }
 
 /// Error code
@@ -322,7 +323,7 @@ pub extern "C" fn bagua_net_c_test(
             }
         }
     }
-    return 0;
+    0
 }
 
 /// Error code
@@ -344,7 +345,7 @@ pub extern "C" fn bagua_net_c_close_send(ptr: *mut BaguaNetC, send_comm_id: usiz
             .close_send(send_comm_id)
             .unwrap();
     }
-    return 0;
+    0
 }
 
 /// Error code
@@ -366,7 +367,7 @@ pub extern "C" fn bagua_net_c_close_recv(ptr: *mut BaguaNetC, recv_comm_id: usiz
             .close_recv(recv_comm_id)
             .unwrap();
     }
-    return 0;
+    0
 }
 
 /// Error code
@@ -388,5 +389,5 @@ pub extern "C" fn bagua_net_c_close_listen(ptr: *mut BaguaNetC, listen_comm_id: 
             .close_listen(listen_comm_id)
             .unwrap();
     }
-    return 0;
+    0
 }

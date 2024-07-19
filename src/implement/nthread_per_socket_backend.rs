@@ -1,4 +1,3 @@
-use crate::interface;
 use crate::interface::{
     BaguaNetError, NCCLNetProperties, Net, SocketHandle, SocketListenCommID, SocketRecvCommID,
     SocketRequestID, SocketSendCommID,
@@ -178,8 +177,8 @@ impl BaguaNet {
                 .u64_value_recorder("irecv_nbytes")
                 .init()
                 .bind(HANDLER_ALL.as_ref()),
-            isend_nbytes_per_second: isend_nbytes_per_second,
-            isend_percentage_of_effective_time: isend_percentage_of_effective_time,
+            isend_nbytes_per_second,
+            isend_percentage_of_effective_time,
             uploader: std::thread::spawn(move || {
                 let prometheus_addr =
                     std::env::var("BAGUA_NET_PROMETHEUS_ADDRESS").unwrap_or_default();
@@ -222,9 +221,9 @@ impl BaguaNet {
             socket_request_next_id: 0,
             socket_request_map: Default::default(),
             trace_span_context: opentelemetry::Context::current_with_span(span),
-            rank: rank,
+            rank,
             trace_on_flag: rank < 8,
-            state: state,
+            state,
             nstreams: std::env::var("BAGUA_NET_NSTREAMS")
                 .unwrap_or("2".to_owned())
                 .parse()
@@ -261,7 +260,7 @@ impl Net for BaguaNet {
         dev_id: usize,
     ) -> Result<(SocketHandle, SocketListenCommID), BaguaNetError> {
         let socket_dev = &self.socket_devs[dev_id];
-        let addr = match socket_dev.addr.clone() {
+        let addr = match socket_dev.addr {
             SockAddr::Inet(inet_addr) => inet_addr,
             others => {
                 return Err(BaguaNetError::InnerError(format!(
@@ -310,7 +309,7 @@ impl Net for BaguaNet {
         let mut parallel_streams = Vec::new();
         let mut streams_input = Vec::new();
         for stream_id in 0..self.nstreams {
-            let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+            let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_string()) {
                 Ok(stream) => stream,
                 Err(err) => {
                     tracing::warn!(
@@ -338,7 +337,7 @@ impl Net for BaguaNet {
                 let mut sum_in_time = 0.;
                 for (data, state) in msg_receiver.iter() {
                     let in_timer = std::time::Instant::now();
-                    utils::nonblocking_write_all(&mut stream, &data[..]).unwrap();
+                    utils::nonblocking_write_all(&mut stream, data).unwrap();
 
                     let dur = in_timer.elapsed().as_secs_f64();
                     sum_in_time += dur;
@@ -363,7 +362,8 @@ impl Net for BaguaNet {
         }
 
         let nstreams = self.nstreams;
-        let mut ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+        let mut ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_string())
+        {
             Ok(ctrl_stream) => ctrl_stream,
             Err(err) => {
                 tracing::warn!(
@@ -388,7 +388,7 @@ impl Net for BaguaNet {
         self.send_comm_map.insert(
             id,
             SocketSendComm {
-                msg_sender: msg_sender,
+                msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {
@@ -401,7 +401,7 @@ impl Net for BaguaNet {
                             break;
                         }
 
-                        if data.len() != 0 {
+                        if !data.is_empty() {
                             let chunk_size = utils::chunk_size(data.len(), min_chunksize, nstreams);
 
                             for bucket in data.chunks(chunk_size) {
@@ -437,7 +437,7 @@ impl Net for BaguaNet {
                     return Err(BaguaNetError::TCPError(format!("{:?}", err)));
                 }
             };
-            let mut stream_id = (0 as usize).to_be_bytes();
+            let mut stream_id = 0_usize.to_be_bytes();
             stream.read_exact(&mut stream_id[..]).unwrap();
             let stream_id = usize::from_be_bytes(stream_id);
 
@@ -471,10 +471,7 @@ impl Net for BaguaNet {
             streams_input.insert(stream_id, msg_sender);
         }
         let mut ctrl_stream = ctrl_stream.unwrap();
-        let streams_input: Vec<_> = streams_input
-            .into_iter()
-            .map(|(_, stream)| stream)
-            .collect();
+        let streams_input: Vec<_> = streams_input.into_values().collect();
 
         ctrl_stream.set_nodelay(true).unwrap();
         ctrl_stream.set_nonblocking(true).unwrap();
@@ -487,7 +484,7 @@ impl Net for BaguaNet {
         self.recv_comm_map.insert(
             id,
             SocketRecvComm {
-                msg_sender: msg_sender,
+                msg_sender,
                 tcp_sender: Arc::new(std::thread::spawn(move || {
                     let mut downstream_id = 0;
                     for (data, state) in msg_receiver.iter() {

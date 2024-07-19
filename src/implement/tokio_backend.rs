@@ -1,6 +1,6 @@
 use crate::interface;
 use crate::interface::{
-    BaguaNetError, NCCLNetProperties, Net, SocketHandle, SocketListenCommID, SocketRecvCommID,
+    BaguaNetError, NCCLNetProperties, SocketHandle, SocketListenCommID, SocketRecvCommID,
     SocketRequestID, SocketSendCommID,
 };
 use crate::utils;
@@ -198,10 +198,10 @@ impl BaguaNet {
                 .u64_value_recorder("irecv_nbytes")
                 .init()
                 .bind(HANDLER_ALL.as_ref()),
-            request_count: request_count,
-            isend_per_second: isend_per_second,
-            isend_nbytes_per_second: isend_nbytes_per_second,
-            isend_percentage_of_effective_time: isend_percentage_of_effective_time,
+            request_count,
+            isend_per_second,
+            isend_nbytes_per_second,
+            isend_percentage_of_effective_time,
             uploader: std::thread::spawn(move || {
                 let prometheus_addr =
                     std::env::var("BAGUA_NET_PROMETHEUS_ADDRESS").unwrap_or_default();
@@ -253,8 +253,8 @@ impl BaguaNet {
             socket_request_next_id: 0,
             socket_request_map: Default::default(),
             trace_span_context: opentelemetry::Context::current_with_span(span),
-            rank: rank,
-            state: state,
+            rank,
+            state,
             nstreams: std::env::var("BAGUA_NET_NSTREAMS")
                 .unwrap_or("2".to_owned())
                 .parse()
@@ -263,7 +263,7 @@ impl BaguaNet {
                 .unwrap_or("65535".to_owned())
                 .parse()
                 .unwrap(),
-            tokio_rt: tokio_rt,
+            tokio_rt,
         })
     }
 }
@@ -292,7 +292,7 @@ impl interface::Net for BaguaNet {
         dev_id: usize,
     ) -> Result<(SocketHandle, SocketListenCommID), BaguaNetError> {
         let socket_dev = &self.socket_devs[dev_id];
-        let addr = match socket_dev.addr.clone() {
+        let addr = match socket_dev.addr {
             SockAddr::Inet(inet_addr) => inet_addr,
             others => {
                 return Err(BaguaNetError::InnerError(format!(
@@ -341,7 +341,7 @@ impl interface::Net for BaguaNet {
         // Init datapass tcp stream
         let mut stream_vec = Vec::new();
         for stream_id in 0..self.nstreams {
-            let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+            let mut stream = match net::TcpStream::connect(socket_handle.addr.clone().to_string()) {
                 Ok(stream) => stream,
                 Err(err) => {
                     tracing::warn!(
@@ -358,7 +358,7 @@ impl interface::Net for BaguaNet {
             tracing::debug!(
                 "{:?} connect to {:?}",
                 stream.local_addr(),
-                socket_handle.addr.clone().to_str()
+                socket_handle.addr.clone().to_string()
             );
             stream.write_all(&stream_id.to_be_bytes()[..]).unwrap();
 
@@ -384,7 +384,7 @@ impl interface::Net for BaguaNet {
                     Some(it) => it,
                     None => break,
                 };
-                if data.len() == 0 {
+                if data.is_empty() {
                     state.lock().unwrap().completed_subtasks += 1;
                     continue;
                 }
@@ -399,7 +399,7 @@ impl interface::Net for BaguaNet {
                         None => break,
                     };
 
-                    datapass_fut.push(stream.write_all(&chunk[..]));
+                    datapass_fut.push(stream.write_all(chunk));
                 }
                 futures::future::join_all(datapass_fut).await;
 
@@ -415,7 +415,8 @@ impl interface::Net for BaguaNet {
             }
         });
 
-        let mut ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_str()) {
+        let mut ctrl_stream = match net::TcpStream::connect(socket_handle.addr.clone().to_string())
+        {
             Ok(ctrl_stream) => ctrl_stream,
             Err(err) => {
                 tracing::warn!(
@@ -441,9 +442,7 @@ impl interface::Net for BaguaNet {
         let (msg_sender, mut msg_receiver) = tokio::sync::mpsc::unbounded_channel();
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
-        let send_comm = SocketSendComm {
-            msg_sender: msg_sender,
-        };
+        let send_comm = SocketSendComm { msg_sender };
         self.tokio_rt.spawn(async move {
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             ctrl_stream.set_nodelay(true).unwrap();
@@ -491,7 +490,7 @@ impl interface::Net for BaguaNet {
                 }
             };
 
-            let mut stream_id = (0 as usize).to_be_bytes();
+            let mut stream_id = 0_usize.to_be_bytes();
             stream.read_exact(&mut stream_id[..]).unwrap();
             let stream_id = usize::from_be_bytes(stream_id);
 
@@ -508,8 +507,8 @@ impl interface::Net for BaguaNet {
             mpsc::unbounded_channel::<(&'static mut [u8], Arc<Mutex<RequestState>>)>();
         self.tokio_rt.spawn(async move {
             let mut stream_vec: Vec<tokio::net::TcpStream> = stream_vec
-                .into_iter()
-                .map(|(_, stream)| tokio::net::TcpStream::from_std(stream).unwrap())
+                .into_values()
+                .map(|stream| tokio::net::TcpStream::from_std(stream).unwrap())
                 .collect();
             for stream in stream_vec.iter_mut() {
                 stream.set_nodelay(true).unwrap();
@@ -521,7 +520,7 @@ impl interface::Net for BaguaNet {
                     Some(it) => it,
                     None => break,
                 };
-                if data.len() == 0 {
+                if data.is_empty() {
                     state.lock().unwrap().completed_subtasks += 1;
                     continue;
                 }
@@ -554,9 +553,7 @@ impl interface::Net for BaguaNet {
         let (msg_sender, mut msg_receiver) = mpsc::unbounded_channel();
         let id = self.recv_comm_next_id;
         self.recv_comm_next_id += 1;
-        let recv_comm = SocketRecvComm {
-            msg_sender: msg_sender,
-        };
+        let recv_comm = SocketRecvComm { msg_sender };
         self.tokio_rt.spawn(async move {
             let mut ctrl_stream = tokio::net::TcpStream::from_std(ctrl_stream).unwrap();
             ctrl_stream.set_nodelay(true).unwrap();

@@ -61,12 +61,12 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
                     continue;
                 }
 
-                assert_eq!(ifaddr.interface_name.len() < MAX_IF_NAME_SIZE, true);
+                assert!(ifaddr.interface_name.len() < MAX_IF_NAME_SIZE);
                 let found_ifs: Vec<&NCCLSocketDev> = socket_devs
                     .iter()
                     .filter(|scoket_dev| scoket_dev.interface_name == ifaddr.interface_name)
                     .collect();
-                if found_ifs.len() > 0 {
+                if !found_ifs.is_empty() {
                     continue;
                 }
 
@@ -77,9 +77,9 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
                 };
 
                 socket_devs.push(NCCLSocketDev {
-                    addr: addr,
+                    addr,
                     interface_name: ifaddr.interface_name.clone(),
-                    pci_path: pci_path,
+                    pci_path,
                 })
             }
             None => {
@@ -107,7 +107,7 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
                         return false;
                     }
                 }
-                if !(&*search_exact).is_empty() {
+                if !(*search_exact).is_empty() {
                     let mut ok = false;
                     for exact_interface in &*search_exact {
                         if socket_dev.interface_name.starts_with(exact_interface) {
@@ -120,7 +120,7 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
                     }
                 }
 
-                return true;
+                true
             }
         })
         .cloned()
@@ -145,6 +145,30 @@ pub fn nonblocking_write_all(stream: &mut std::net::TcpStream, mut buf: &[u8]) -
             Err(e) => return Err(e),
         }
         std::thread::yield_now();
+    }
+    Ok(())
+}
+
+pub fn nonblocking_write_vectored(
+    stream: &mut std::net::TcpStream,
+    bufs: &[std::io::IoSlice],
+) -> io::Result<()> {
+    let total_len: usize = bufs.iter().map(|b| b.len()).sum();
+    let mut sent: usize = 0;
+    while sent < total_len {
+        match stream.write_vectored(bufs) {
+            Ok(0) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "failed to write whole buffer",
+                ));
+            }
+            Ok(n) => sent += n,
+            Err(ref e)
+                if e.kind() == io::ErrorKind::Interrupted
+                    || e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => return Err(e),
+        }
     }
     Ok(())
 }
@@ -199,9 +223,7 @@ pub fn parse_user_pass_and_addr(raw_url: &str) -> Option<(String, String, String
 
 pub fn chunk_size(total: usize, min_chunksize: usize, expected_nchunks: usize) -> usize {
     let chunk_size = (total + expected_nchunks - 1) / expected_nchunks;
-    let chunk_size = std::cmp::max(chunk_size, min_chunksize);
-
-    chunk_size
+    std::cmp::max(chunk_size, min_chunksize)
 }
 
 /// Creates a `SockAddr` struct from libc's sockaddr.
