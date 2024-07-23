@@ -230,6 +230,7 @@ pub extern "C" fn bagua_net_c_accept(
 pub struct Buffer {
     data: *mut u8,
     len: usize,
+    rank: i16,
 }
 
 /// Error code

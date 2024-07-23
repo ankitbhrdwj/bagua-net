@@ -32,6 +32,7 @@ struct Buffer
 {
   uint8_t *data;
   uintptr_t len;
+  int16_t rank;
 };
 
 extern "C"
@@ -132,9 +133,9 @@ public:
 
   int32_t accept(void *listen_comm, void **recv_comm);
 
-  int32_t isend(void *send_comm, void *data, int size, void *mhandle, void **request);
+  int32_t isend(void *send_comm, void *data, int size, int tag, void *mhandle, void **request);
 
-  int32_t irecv(void *recv_comm, void *data, int size, void *mhandle, void **request);
+  int32_t irecv(void *recv_comm, void *data, int size, int tag, void *mhandle, void **request);
 
   int32_t test(void *request, bool *done, uintptr_t *bytes);
 
@@ -148,6 +149,6 @@ private:
   BaguaNet();
 
 private:
-  std::unique_ptr<BaguaNetC, std::function<void(BaguaNetC *)> > inner;
-  std::vector<std::shared_ptr<NCCLNetPropertiesC> > device_props;
+  std::unique_ptr<BaguaNetC, std::function<void(BaguaNetC *)>> inner;
+  std::vector<std::shared_ptr<NCCLNetPropertiesC>> device_props;
 };

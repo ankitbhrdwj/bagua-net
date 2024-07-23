@@ -116,7 +116,7 @@ __hidden ncclResult_t baguaNetDeregMr_v3(void *comm, void *mhandle)
 
 __hidden ncclResult_t baguaNetIsend_v3(void *sendComm, void *data, int size, void *mhandle, void **request)
 {
-    int ret = BaguaNet::instance().isend(sendComm, data, size, mhandle, request);
+    int ret = BaguaNet::instance().isend(sendComm, data, size, 0, mhandle, request);
     if (ret != 0)
     {
         NCCL_WARN("baguaNetIsend_v3 failed, ret=%d, sendComm=%p, data=%p, size=%d", ret, sendComm, data, size);
@@ -130,7 +130,7 @@ __hidden ncclResult_t baguaNetIsend_v3(void *sendComm, void *data, int size, voi
 
 __hidden ncclResult_t baguaNetIrecv_v3(void *recvComm, void *data, int size, void *mhandle, void **request)
 {
-    int ret = BaguaNet::instance().irecv(recvComm, data, size, mhandle, request);
+    int ret = BaguaNet::instance().irecv(recvComm, data, size, 0, mhandle, request);
     if (ret != 0)
     {
         NCCL_WARN("baguaNetIrecv_v3 failed, ret=%d, sendComm=%p, data=%p, size=%d", ret, recvComm, data, size);

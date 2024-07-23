@@ -70,12 +70,13 @@ int32_t BaguaNet::accept(void *listen_comm, void **recv_comm)
     return 0;
 }
 
-int32_t BaguaNet::isend(void *send_comm, void *data, int size, void *mhandle, void **request)
+int32_t BaguaNet::isend(void *send_comm, void *data, int size, int tag, void *mhandle, void **request)
 {
     uintptr_t send_comm_id = *static_cast<uintptr_t *>(send_comm);
     Buffer buf{
         .data = static_cast<uint8_t *>(data),
         .len = (uintptr_t)(size),
+        .rank = (int16_t)(tag),
     };
     auto request_id = std::make_unique<uintptr_t>(-1);
 
@@ -89,12 +90,13 @@ int32_t BaguaNet::isend(void *send_comm, void *data, int size, void *mhandle, vo
     return 0;
 }
 
-int32_t BaguaNet::irecv(void *recv_comm, void *data, int size, void *mhandle, void **request)
+int32_t BaguaNet::irecv(void *recv_comm, void *data, int size, int tag, void *mhandle, void **request)
 {
     uintptr_t recv_comm_id = *static_cast<uintptr_t *>(recv_comm);
     Buffer buf{
         .data = static_cast<uint8_t *>(data),
         .len = (uintptr_t)(size),
+        .rank = (int16_t)(tag),
     };
     auto request_id = std::make_unique<uintptr_t>(-1);
 
@@ -140,7 +142,7 @@ int32_t BaguaNet::close_listen(void *listen_comm)
 
 BaguaNet::BaguaNet()
 {
-    inner = std::unique_ptr<BaguaNetC, std::function<void(BaguaNetC *)> >(
+    inner = std::unique_ptr<BaguaNetC, std::function<void(BaguaNetC *)>>(
         bagua_net_c_create(),
         [](BaguaNetC *ptr)
         {
