@@ -8,7 +8,7 @@ mod interface;
 mod utils;
 
 use ffi_convert::{AsRust, CDrop, CReprOf};
-use implement::{nthread_per_socket_backend, tokio_backend};
+use implement::{dpdk, nthread_per_socket_backend, tokio_backend};
 use interface::{NCCLNetProperties, Net, SocketHandle};
 use std::sync::{Arc, Mutex};
 
@@ -24,6 +24,7 @@ pub extern "C" fn bagua_net_c_create() -> *mut BaguaNetC {
     let bagua_net: Box<dyn Net> = match &config[..] {
         "TOKIO" => Box::new(tokio_backend::BaguaNet::new().unwrap()),
         "BASIC" => Box::new(nthread_per_socket_backend::BaguaNet::new().unwrap()),
+        "DPDK" => Box::new(dpdk::BaguaNet::new().unwrap()),
         _ => {
             return std::ptr::null_mut();
         }
