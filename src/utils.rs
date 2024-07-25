@@ -2,7 +2,8 @@ use nix::net::if_::InterfaceFlags;
 use nix::sys::socket::{AddressFamily, InetAddr, SockAddr};
 use std::fs;
 use std::io;
-use std::io::{Read, Write};
+use std::io::{BufRead, Read, Write};
+use std::path::Path;
 
 pub fn get_net_if_speed(device: &str) -> i32 {
     const DEFAULT_SPEED: i32 = 10000;
@@ -69,17 +70,24 @@ pub fn find_interfaces() -> Vec<NCCLSocketDev> {
                 if !found_ifs.is_empty() {
                     continue;
                 }
+                let pci_path = format!("/sys/class/net/{}/device/uevent", ifaddr.interface_name);
+                let path = Path::new(&pci_path);
+                if !path.exists() {
+                    continue;
+                }
 
-                let pci_path = format!("/sys/class/net/{}/device", ifaddr.interface_name);
-                let pci_path: String = match std::fs::canonicalize(pci_path) {
-                    Ok(pci_path) => pci_path.to_str().unwrap_or("").to_string(),
-                    Err(_) => "".to_string(),
-                };
+                let file = fs::File::open(pci_path).expect("open file failed");
+                let reader = io::BufReader::new(file);
+
+                let pci_addr = reader.lines().map_while(Result::ok).find_map(|line| {
+                    line.strip_prefix("PCI_SLOT_NAME=")
+                        .map(|pci_addr| pci_addr.to_string())
+                });
 
                 socket_devs.push(NCCLSocketDev {
                     addr,
                     interface_name: ifaddr.interface_name.clone(),
-                    pci_path,
+                    pci_path: pci_addr.unwrap_or("".to_string()),
                 })
             }
             None => {

@@ -10,7 +10,7 @@ $(PLUGIN_SO): bagua_net.cc $(NCCL_NET_V5) $(NCCL_NET_V3) $(BAGUA_NET_LIB)
 	$(CXX) -v $(INC) \
 	-std=c++17 -fPIC -shared \
 	-o $@ $^ \
-	-L. -l:$(BAGUA_NET_LIB) -lz -lcurl
+	-L. -l:$(BAGUA_NET_LIB) -lz -lcurl -libverbs -lmlx5 -lnuma
 
 $(BAGUA_NET_LIB):
 	cargo build --release && cp ../target/release/$(BAGUA_NET_LIB) ./$(BAGUA_NET_LIB)
