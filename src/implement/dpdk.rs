@@ -8,7 +8,7 @@ use socket2::{Domain, Socket, Type};
 use std::collections::HashMap;
 
 use anyhow::Context;
-use dpdk::eal::*;
+use libtcp::*;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -83,10 +83,12 @@ impl BaguaNet {
                 "No available network devices found".to_string(),
             ));
         }
-        let eal = Eal::new(&mut network_args(devices[0].pci_path.clone()))
-            .context("initializing EAL")
-            .unwrap();
-        let lcores = eal.lcores();
+        let ret = unsafe { libtcp::ffi::tpa_init(1) };
+        if ret < 0 {
+            return Err(BaguaNetError::InnerError(
+                "Failed to initialize libtpa".to_string(),
+            ));
+        }
 
         Ok(BaguaNet {
             devices: utils::find_interfaces(),
