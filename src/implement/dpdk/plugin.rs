@@ -4,13 +4,13 @@ use crate::interface::{
 };
 use crate::utils;
 use nix::sys::socket::{InetAddr, SockAddr};
-use socket2::{Domain, Socket, Type};
 use std::collections::HashMap;
 
-use anyhow::Context;
-use libtcp::*;
 use std::sync::Arc;
 use std::sync::Mutex;
+
+use super::ffi::*;
+use super::tcp::*;
 
 const NCCL_PTR_HOST: i32 = 1;
 const NCCL_PTR_CUDA: i32 = 2;
@@ -57,24 +57,15 @@ pub struct BaguaNet {
     pub socket_request_next_id: usize,
     pub socket_request_map: HashMap<SocketRequestID, SocketRequest>,
     // some fields omitted
-}
 
-fn network_args(pci_path: String) -> Vec<String> {
-    let args = vec![
-        "nccl_plugin".to_string(),
-        String::from("-a"),
-        pci_path,
-        String::from("-l"),
-        "0".to_string(),
-        String::from("--main-lcore"),
-        "0".to_string(),
-    ];
-    args
+    // libtcp specific fields
+    workers: Vec<Box<tpa_worker>>,
 }
 
 impl BaguaNet {
     const DEFAULT_SOCKET_MAX_COMMS: i32 = 65536;
     const DEFAULT_LISTEN_BACKLOG: i32 = 16384;
+    const NR_WORKERS: i32 = 1;
 
     pub fn new() -> Result<BaguaNet, BaguaNetError> {
         let devices = utils::find_interfaces();
@@ -83,12 +74,11 @@ impl BaguaNet {
                 "No available network devices found".to_string(),
             ));
         }
-        let ret = unsafe { libtcp::ffi::tpa_init(1) };
-        if ret < 0 {
-            return Err(BaguaNetError::InnerError(
-                "Failed to initialize libtpa".to_string(),
-            ));
-        }
+        libtcp_config(&devices[0]).expect("network_config failed");
+        tcp_init(BaguaNet::NR_WORKERS).expect("tcp_init failed");
+        let workers = (0..BaguaNet::NR_WORKERS)
+            .map(|_| tcp_worker_init())
+            .collect();
 
         Ok(BaguaNet {
             devices: utils::find_interfaces(),
@@ -100,6 +90,7 @@ impl BaguaNet {
             recv_comm_map: Default::default(),
             socket_request_next_id: 0,
             socket_request_map: Default::default(),
+            workers,
         })
     }
 }
@@ -141,23 +132,12 @@ impl Net for BaguaNet {
 
         let id = self.listen_comm_next_id;
         self.listen_comm_next_id += 1;
-        let socket_addr = InetAddr::new(addr.ip(), id as u16);
-        let socket = match Socket::new(
-            match addr {
-                InetAddr::V4(_) => Domain::IPV4,
-                InetAddr::V6(_) => Domain::IPV6,
-            },
-            Type::STREAM,
-            None,
-        ) {
-            Ok(sock) => sock,
-            Err(err) => return Err(BaguaNetError::IOError(format!("{:?}", err))),
-        };
-        socket.bind(&addr.to_std().into()).unwrap();
-        socket.listen(BaguaNet::DEFAULT_LISTEN_BACKLOG).unwrap();
-
+        let local_ip = addr.ip();
+        let port = self.listen_comm_next_id as u16;
+        println!("Listening on {}:{}", local_ip, port);
+        //let fd = tcp_listen_on(local_ip.to_string(), port, None).expect("tcp_listen_on failed");
         let socket_handle = SocketHandle {
-            addr: SockAddr::new_inet(socket_addr),
+            addr: SockAddr::new_inet(InetAddr::new(local_ip, port)),
         };
         Ok((socket_handle, id))
     }
@@ -170,6 +150,20 @@ impl Net for BaguaNet {
         // Send a request to other side to establish a connection
         let id = self.send_comm_next_id;
         self.send_comm_next_id += 1;
+        let fd = match socket_handle.addr {
+            SockAddr::Inet(inet_addr) => {
+                let ip = inet_addr.ip();
+                let port = inet_addr.port();
+                println!("Connecting to {}:{}", ip, port);
+                //tcp_connect_to(ip.to_string(), port, None).expect("tcp_connect_to failed")
+                0
+            }
+            _ => {
+                return Err(BaguaNetError::InnerError(
+                    "Got invalid socket address".to_string(),
+                ))
+            }
+        };
         Ok(id)
     }
 
