@@ -226,6 +226,7 @@ dependencies = [
  "opentelemetry-jaeger",
  "opentelemetry-prometheus",
  "prometheus",
+ "rand",
  "regex",
  "socket2 0.5.7",
  "thiserror",

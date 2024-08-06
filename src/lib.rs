@@ -1,4 +1,5 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
+#![feature(slice_take)]
 
 #[macro_use]
 extern crate lazy_static;

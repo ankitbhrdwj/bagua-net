@@ -1,3 +1,6 @@
+#![allow(clippy::all)]
+#![allow(dead_code)]
+
 use crate::interface;
 use crate::interface::{
     BaguaNetError, NCCLNetProperties, SocketHandle, SocketListenCommID, SocketRecvCommID,

@@ -37,3 +37,4 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 libtcp = { path = "../libtpa/bindings" }
 anyhow = "1"
+rand = "0.8"

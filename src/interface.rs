@@ -1,3 +1,4 @@
+use nix::sys::socket::{IpAddr, Ipv4Addr, SockAddr};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
@@ -21,9 +22,37 @@ pub struct NCCLNetProperties {
     pub max_comms: i32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SocketHandle {
     pub addr: nix::sys::socket::SockAddr,
+}
+
+impl SocketHandle {
+    pub fn ipv4(&self) -> Result<Ipv4Addr, std::io::Error> {
+        match self.addr {
+            SockAddr::Inet(inet_addr) => match inet_addr.ip() {
+                IpAddr::V4(ip) => Ok(ip),
+                _ => Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "invalid socket address",
+                )),
+            },
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid socket address",
+            )),
+        }
+    }
+
+    pub fn port(&self) -> Result<u16, std::io::Error> {
+        match self.addr {
+            SockAddr::Inet(inet_addr) => Ok(inet_addr.port()),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid socket address",
+            )),
+        }
+    }
 }
 
 pub type SocketListenCommID = usize;
