@@ -47,8 +47,8 @@ pub fn libtcp_config(device: &utils::NCCLSocketDev) -> Result<(), Error> {
     file.write_all(b"mask = 255.255.255.0; }\n").unwrap();
     file.write_all(format!("dpdk {{ pci = {}; }}\n", device.pci_path).as_bytes())
         .unwrap();
-    file.write_all(b"tcp {{ snd_queue_size = 2048; }}\n")
-        .unwrap();
+    file.write_all(b"tcp { snd_queue_size = 2048; }\n").unwrap();
+    file.write_all(b"trace { enable = 0; }\n").unwrap();
     file.flush().unwrap();
     Ok(())
 }
