@@ -13,8 +13,10 @@ use std::sync::{Arc, Barrier};
 use super::ffi::*;
 use super::tcp::*;
 
-const NCCL_PTR_HOST: i32 = 1;
-const NCCL_PTR_CUDA: i32 = 2;
+enum NcclPtr {
+    HostPtr = 1,
+    CudaPtr = 2,
+}
 
 #[derive(Debug)]
 pub struct RequestState {
@@ -27,14 +29,14 @@ pub struct RequestState {
 #[derive(Clone)]
 pub struct SocketSendComm {
     pub sid: i32,
-    pub tcp_sender: Arc<std::thread::JoinHandle<()>>,
+    pub _tcp_sender: Arc<std::thread::JoinHandle<()>>,
     pub msg_sender: flume::Sender<(&'static [u8], Arc<Mutex<RequestState>>)>,
 }
 
 #[derive(Clone)]
 pub struct SocketRecvComm {
     pub sid: i32,
-    pub tcp_reciever: Arc<std::thread::JoinHandle<()>>,
+    pub _tcp_reciever: Arc<std::thread::JoinHandle<()>>,
     pub msg_sender: flume::Sender<(&'static mut [u8], Arc<Mutex<RequestState>>)>,
 }
 
@@ -109,7 +111,7 @@ impl Net for BaguaNet {
             name: socket_dev.interface_name.clone(),
             pci_path: socket_dev.pci_path.clone(),
             guid: dev_id as u64,
-            ptr_support: NCCL_PTR_HOST,
+            ptr_support: NcclPtr::HostPtr as i32,
             speed: utils::get_net_if_speed(&socket_dev.interface_name),
             port: 0,
             max_comms: BaguaNet::DEFAULT_SOCKET_MAX_COMMS,
@@ -152,29 +154,26 @@ impl Net for BaguaNet {
             SocketRecvComm {
                 sid: 0,
                 msg_sender,
-                tcp_reciever: Arc::new(std::thread::spawn(move || {
+                _tcp_reciever: Arc::new(std::thread::spawn(move || {
                     let mut worker = tcp_worker_init();
                     tcp_listen(socket_handle, None).expect("tcp_listen failed");
-                    let sid = tcp_accept(&mut worker).expect("tcp_listen_and_accept failed");
-                    let ctrl_sid: i32 =
-                        tcp_accept(&mut worker).expect("tcp_listen_and_accept failed");
+                    let mut data_reader = TCPReader::new(&mut worker);
+                    let mut ctrl_reader = TCPReader::new(&mut worker);
                     b.wait();
 
                     // Reciever loop
-                    let mut fd = -1;
-                    let mut tcp_reader = TCPReader::default();
                     loop {
                         tcp_worker_run(&mut worker);
-                        assert!(tcp_accept_burst(&mut worker, &mut fd) == 0);
 
                         if let Ok((data, state)) = msg_receiver.try_recv() {
                             let mut target_nbytes = data.len().to_be_bytes();
                             let size = target_nbytes.len();
-                            tcp_read_exact(&mut worker, ctrl_sid, &mut target_nbytes[..], size)
+                            ctrl_reader
+                                .read_exact(&mut worker, &mut target_nbytes[..], size)
                                 .unwrap();
                             let target_nbytes = usize::from_be_bytes(target_nbytes);
-                            tcp_reader
-                                .read_exact(&mut worker, sid, data, target_nbytes)
+                            data_reader
+                                .read_exact(&mut worker, data, target_nbytes)
                                 .unwrap();
                             match state.lock() {
                                 Ok(mut state) => {
@@ -208,21 +207,22 @@ impl Net for BaguaNet {
             SocketSendComm {
                 sid: 0,
                 msg_sender,
-                tcp_sender: Arc::new(std::thread::spawn(move || {
+                _tcp_sender: Arc::new(std::thread::spawn(move || {
                     let mut worker = tcp_worker_init();
-                    let fd = tcp_connect(&mut worker, socket_handle.clone(), None)
-                        .expect("tcp_connect failed");
-                    let ctrl_fd =
-                        tcp_connect(&mut worker, socket_handle, None).expect("tcp_connect failed");
+                    let mut data_writer = TCPWriter::new(&mut worker, socket_handle.clone(), None);
+                    let mut ctrl_writer = TCPWriter::new(&mut worker, socket_handle, None);
 
                     // Sender loop
                     loop {
                         tcp_worker_run(&mut worker);
                         if let Ok((data, state)) = msg_receiver.try_recv() {
                             let send_nbytes = data.len().to_be_bytes();
-                            tcp_write(&mut worker, ctrl_fd, &send_nbytes)
+                            ctrl_writer
+                                .tcp_write(&mut worker, &send_nbytes)
                                 .expect("tcp_write failed");
-                            tcp_write(&mut worker, fd, data).expect("tcp_write failed");
+                            data_writer
+                                .tcp_write(&mut worker, data)
+                                .expect("tcp_write failed");
                             match state.lock() {
                                 Ok(mut state) => {
                                     state.completed_subtasks += 1;

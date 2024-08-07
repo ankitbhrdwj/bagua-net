@@ -24,6 +24,7 @@ test:
 
 clean:
 	rm -f $(PLUGIN_SO) $(BAGUA_NET_LIB)
+	cargo clean
 
 tar: $(PLUGIN_SO)
 	mkdir build && mv $(PLUGIN_SO) build \

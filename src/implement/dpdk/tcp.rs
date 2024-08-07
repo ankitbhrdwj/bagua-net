@@ -175,36 +175,6 @@ pub fn tcp_connect(
     Ok(fd)
 }
 
-pub fn tcp_write(
-    worker: &mut Box<tpa_worker>,
-    sid: i32,
-    buf: &[u8],
-) -> Result<isize, std::io::Error> {
-    let uninit: MaybeUninit<tpa_iovec> = MaybeUninit::<tpa_iovec>::uninit();
-    let mut iov = unsafe { uninit.assume_init() };
-    iov.iov_base = buf.as_ptr() as *mut std::ffi::c_void;
-    iov.iov_len = buf.len() as u32;
-    iov.iov_phys = 0;
-    iov.__bindgen_anon_1.iov_write_done = None;
-    iov.iov_param = ptr::null_mut();
-
-    loop {
-        tcp_worker_run(worker);
-        let ret = unsafe { libtcp::ffi::tpa_zwritev(sid, &iov, 1) };
-        if ret < 0 {
-            continue;
-        }
-
-        let mut uninit = [MaybeUninit::<tpa_event>::uninit(); 32];
-        let mut events = uninit
-            .iter_mut()
-            .map(|x| unsafe { x.assume_init() })
-            .collect::<Vec<tpa_event>>();
-        tcp_event_poll(worker, &mut events, 32);
-        return Ok(ret);
-    }
-}
-
 pub fn tcp_read_exact(
     worker: &mut Box<tpa_worker>,
     sid: i32,
@@ -314,16 +284,35 @@ pub fn tcp_event_poll(
     unsafe { libtcp::ffi::tpa_event_poll(worker.as_mut(), events.as_mut_ptr(), maxevents) }
 }
 
-#[derive(Debug, Default)]
 pub struct TCPReader {
+    fd: i32,
+    events: Vec<tpa_event>,
+    iov: tpa_iovec,
     partial: Option<Vec<u8>>,
 }
 
 impl TCPReader {
+    pub fn new(worker: &mut Box<tpa_worker>) -> Self {
+        let fd = tcp_accept(worker).expect("tcp_listen_and_accept failed");
+        let mut uninit = [MaybeUninit::<tpa_event>::uninit(); 32];
+        let events = uninit
+            .iter_mut()
+            .map(|x| unsafe { x.assume_init() })
+            .collect::<Vec<tpa_event>>();
+
+        let uninit = MaybeUninit::<tpa_iovec>::uninit();
+        let iov = unsafe { uninit.assume_init() };
+        TCPReader {
+            fd,
+            partial: None,
+            events,
+            iov,
+        }
+    }
+
     pub fn read_exact(
         &mut self,
         worker: &mut Box<tpa_worker>,
-        sid: i32,
         buf: &mut [u8],
         size: usize,
     ) -> Result<isize, std::io::Error> {
@@ -339,40 +328,86 @@ impl TCPReader {
             }
             buf = &mut buf[len..];
         }
-        let mut uninit = [MaybeUninit::<tpa_event>::uninit(); 32];
-        let mut events = uninit
-            .iter_mut()
-            .map(|x| unsafe { x.assume_init() })
-            .collect::<Vec<tpa_event>>();
 
         while !buf.is_empty() {
-            //tcp_worker_run(worker);
-            let uninit: MaybeUninit<tpa_iovec> = MaybeUninit::<tpa_iovec>::uninit();
-            let mut iov = unsafe { uninit.assume_init() };
-            iov.iov_len = 0;
-            let ret = unsafe { tpa_zreadv(sid, &mut iov, 1) };
+            self.iov.iov_len = 0;
+            let ret = unsafe { tpa_zreadv(self.fd, &mut self.iov, 1) };
 
             if ret > 0 {
                 let src = unsafe {
-                    std::slice::from_raw_parts(iov.iov_base as *const u8, iov.iov_len as usize)
+                    std::slice::from_raw_parts(
+                        self.iov.iov_base as *const u8,
+                        self.iov.iov_len as usize,
+                    )
                 };
                 let tmp = buf;
                 if src.len() <= tmp.len() {
                     tmp[..src.len()].copy_from_slice(src);
                     buf = &mut tmp[src.len()..];
-                    unsafe {
-                        iov.__bindgen_anon_1.iov_read_done.unwrap()(iov.iov_base, iov.iov_param)
-                    };
                 } else {
                     tmp.copy_from_slice(&src[..tmp.len()]);
                     self.partial = Some(src[tmp.len()..].to_vec());
                     buf = &mut tmp[0..0];
                 }
+                unsafe {
+                    self.iov.__bindgen_anon_1.iov_read_done.unwrap()(
+                        self.iov.iov_base,
+                        self.iov.iov_param,
+                    )
+                };
             } else {
-                tcp_event_poll(worker, &mut events, 32);
+                tcp_event_poll(worker, &mut self.events, 32);
             }
         }
 
         Ok(size as isize)
+    }
+}
+
+pub struct TCPWriter {
+    fd: i32,
+    events: Vec<tpa_event>,
+    iov: tpa_iovec,
+}
+
+impl TCPWriter {
+    pub fn new(
+        worker: &mut Box<tpa_worker>,
+        socket_handle: SocketHandle,
+        opts: Option<libtcp::ffi::tpa_sock_opts>,
+    ) -> Self {
+        let fd = tcp_connect(worker, socket_handle.clone(), opts).expect("tcp_connect failed");
+        let mut uninit = [MaybeUninit::<tpa_event>::uninit(); 32];
+        let events = uninit
+            .iter_mut()
+            .map(|x| unsafe { x.assume_init() })
+            .collect::<Vec<tpa_event>>();
+
+        let uninit = MaybeUninit::<tpa_iovec>::uninit();
+        let iov = unsafe { uninit.assume_init() };
+        TCPWriter { events, iov, fd }
+    }
+
+    pub fn tcp_write(
+        &mut self,
+        worker: &mut Box<tpa_worker>,
+        buf: &[u8],
+    ) -> Result<isize, std::io::Error> {
+        self.iov.iov_base = buf.as_ptr() as *mut std::ffi::c_void;
+        self.iov.iov_len = buf.len() as u32;
+        self.iov.iov_phys = 0;
+        self.iov.__bindgen_anon_1.iov_write_done = None;
+        self.iov.iov_param = ptr::null_mut();
+
+        loop {
+            tcp_worker_run(worker);
+            let ret = unsafe { libtcp::ffi::tpa_zwritev(self.fd, &self.iov, 1) };
+            if ret < 0 {
+                continue;
+            }
+
+            tcp_event_poll(worker, &mut self.events, 32);
+            return Ok(ret);
+        }
     }
 }
